@@ -261,11 +261,11 @@ class Img(object):
 
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        filename='imageselector.log',
-        level=logging.DEBUG,
-        format='%(asctime)s | %(filename)s:%(lineno)s | %(message)s'
-    )
+    # logging.basicConfig(
+    #     filename='imageselector.log',
+    #     level=logging.DEBUG,
+    #     format='%(asctime)s | %(filename)s:%(lineno)s | %(message)s'
+    # )
 
     # path = "img/sample.jpg"
     path = "img/sample1_1.jpg"

@@ -30,7 +30,24 @@ class EnterPointPool(Threshold, metaclass=Singleton):
         super(EnterPointPool, self).__init__()
         self.pool = None
         self.last_elected = None
-        self.by = "row"
+        # name of column
+        self.by = "enter_point_row"
+
+    def set_base_pool_old(self, first_enter_points):
+        """asdasdasdasd
+
+        dasdasdasd
+
+        Parameters
+        ----------
+        first_enter_points : list
+            adasdasdasd
+        """
+        if self.pool is None:
+            _pool = pd.DataFrame(first_enter_points, columns=("row", "col"))
+            print(_pool)
+            self.pool = _pool
+            logging.debug("""\nBase pool:\n{0}""".format(self.pool))
 
     def set_base_pool(self, first_enter_points):
         """asdasdasdasd
@@ -43,7 +60,8 @@ class EnterPointPool(Threshold, metaclass=Singleton):
             adasdasdasd
         """
         if self.pool is None:
-            _pool = pd.DataFrame(first_enter_points, columns=("row", "col"))
+            _pool = pd.DataFrame(first_enter_points,
+                                 columns=("enter_point_row", "enter_point_col", "next_cell_contour"))
             self.pool = _pool
             logging.debug("""\nBase pool:\n{0}""".format(self.pool))
 
@@ -52,21 +70,23 @@ class EnterPointPool(Threshold, metaclass=Singleton):
         _min = self.pool.min()
 
         min_item = self.pool.ix[self.pool[self.by] == _min[self.by]]
+
         logging.debug("""\nMIN {0} value:\n{1}""".format(self.by.upper(), min_item))
 
-        next_enter_points = self.pool.ix[abs(self.pool.row - _min.row) < self.PIXEL_OFFSET, :]
+        next_enter_points = self.pool.ix[abs(self.pool.enter_point_row - _min.enter_point_row) < self.PIXEL_OFFSET, :]
         logging.debug("""Next row enter points:\n{0}""".format(next_enter_points))
-
         # drop next point from pool
         self.pool = self.pool.drop(next_enter_points.index.values)
+        # print(self.pool)
         logging.debug("""Dropped pool:\n{0}""".format(self.pool))
 
         return next_enter_points.values
 
-    def extend_pool(self, new_ep):
-        _tmp_df = pd.DataFrame(new_ep, columns=("row", "col"))
+    def extend_pool(self, new_enter_points):
+        _tmp_df = pd.DataFrame(new_enter_points, columns=("enter_point_row", "enter_point_col", "next_cell_contour"))
         # don't use duplicated indices
-        self.pool = self.pool.append(_tmp_df, ignore_index=True).sort_values(by=["col", "row"])
+        self.pool = self.pool.append(_tmp_df, ignore_index=True).sort_values(by=["enter_point_col", "enter_point_row"])
+        # print(self.pool)
         self.__validate_enter_points()
 
     def __validate_enter_points(self):
@@ -77,7 +97,7 @@ class EnterPointPool(Threshold, metaclass=Singleton):
 
         """
         # sort in descending direction, because we need the most LEFT enter point in group
-        _pool = self.pool.sort_values(by=["col", "row"], ascending=False)
+        _pool = self.pool.sort_values(by=["enter_point_col", "enter_point_row"], ascending=False)
 
         values = _pool.values
         res = list()
@@ -94,8 +114,13 @@ class EnterPointPool(Threshold, metaclass=Singleton):
                 res.append(cur)
 
         # sort in default direction
-        validated = pd.DataFrame(res, columns=("row", "col")).sort_values(by=["col", "row"])
+        validated = pd.DataFrame(
+            res,
+            columns=("enter_point_row", "enter_point_col", "next_cell_contour")
+        ).sort_values(by=["enter_point_col", "enter_point_row"])
+        print("RES", self.pool)
         self.pool = validated
+        print("RES", self.pool)
 
     def show(self):
         print(self.pool)
@@ -138,7 +163,8 @@ class RowCellSet(object):
 
         Examples
         --------
-        {'width': [26, 36, 36, 119], 'height': [31, 31, 31, 14]}
+        Result returns as:
+            {'width': [26, 36, 36, 119], 'height': [31, 31, 31, 14]}
         """
         widths = list()
         heights = list()
@@ -163,6 +189,12 @@ class RowCellSet(object):
         list of list
             Pairs start index, end index.
 
+        Examples
+        --------
+        Result returns as:
+            [[0, 1, 2], [3], [4, 5], ...]
+        Where elements of each group inside global list represent indices of <Contour> objects
+        which are in self.body.
         """
         # FIXME add also width measure
         size = self.get_cells_size()
@@ -207,7 +239,7 @@ class RowCellSet(object):
 
         return segments
 
-    def get_all_enter_points(self):
+    def get_all_enter_points_old(self):
         """Calculate all possible enter points(bottom left connor) for next row.
 
         Calculate enter points in each segment group.
@@ -220,12 +252,74 @@ class RowCellSet(object):
         # print("segments", segments)
 
         all_enter_points = list()
+        all_enter_points_new = list()
         for segment in segments:
-            # print(segment)
+            # get index of next segment
+            next_segment_ind = segments.index(segment) + 1
+            # check validity, if it is end left None
+            next_cell_contour = None
+            if next_segment_ind < len(segments):
+                next_segment = segments[next_segment_ind]
+                next_cell_contour = self.body[next_segment[0]]
+
+            # print(segment, next_cell_contour)
+
             segment_start = self.body[segment[0]]
             start_loc = segment_start.get_conner("bl")
+
+            cell_enter_options = {
+                "enter_point": start_loc,
+                "next_cell_contour": next_cell_contour
+            }
+
             # print(start_loc)
             all_enter_points.append(start_loc)
+            all_enter_points_new.append(cell_enter_options)
+
+        print(all_enter_points)
+        print(all_enter_points_new)
+
+        logging.debug("""All enter points: {0}""".format(all_enter_points))
+
+        return all_enter_points
+
+    def get_all_enter_points(self):
+        """Calculate all possible enter points(bottom left connor) for next row.
+
+        Calculate enter points in each segment group.
+
+        Returns
+        -------
+        list of numpy.array
+        """
+        segments = self.__get_row_segments_indices()
+        print("segments", segments)
+
+        all_enter_points = list()
+        for segment in segments:
+            # get index of next segment
+            curr_segment_ind = segments.index(segment)
+            next_segment_ind = curr_segment_ind + 1
+            # check validity, if it is end left None
+            next_cell_contour = None
+            if next_segment_ind < len(segments):
+                curr_segment = segments[curr_segment_ind]
+                next_segment = segments[next_segment_ind]
+                next_cell_contour = self.body[next_segment[0]]
+
+            # print(segment, next_cell_contour)
+
+            segment_start = self.body[segment[0]]
+            start_loc = segment_start.get_conner("bl")
+
+            cell_enter_options = {
+                "enter_point_row": start_loc[0],
+                "enter_point_col": start_loc[1],
+                "next_cell_contour": next_cell_contour
+            }
+
+            # print(start_loc)
+            all_enter_points.append(cell_enter_options)
 
         # print(all_enter_points)
 
@@ -233,57 +327,91 @@ class RowCellSet(object):
 
         return all_enter_points
 
-    @staticmethod
-    def __get_min(enter_points, value="row"):
-        """
-
-        Parameters
-        ----------
-        enter_points : list of numpy.array
-            List of coordinates
-        value : {"row", "col"}
-            Define which position should be calculated as a minimum.
-        Returns
-        -------
-        numpy.array
-            The most extreme enter point value
-        """
-        if value not in ("row", "col"):
-            raise ValueError
-
-        if value == "row":
-            ind = 0
-        else:
-            ind = 1
-
-        min_value = None
-        for el in enter_points:
-            if min_value is None:
-                min_value = el
-            else:
-                if el[ind] < min_value[ind]:
-                    min_value = el
-
-        logging.debug("MIN value in {0}: {1}".format(value.upper(), min_value))
-
-        return min_value
-
-    def get_next_leak_points(self):
-        all_enter_points = self.get_all_enter_points()
-        # FIXME
-        min_row_val = self.__get_min(all_enter_points)
-        # print(min_row_val)
-        next_enter_points = list()
-        for ind, el in enumerate(all_enter_points):
-            print("sss")
-            cur = all_enter_points[ind]
-            diff = min_row_val[0] - cur[0]
-            # FIXME don't use pixel based metrics
-            if 0 <= abs(diff) < 5:
-                next_enter_points.append(cur)
-
-        logging.debug("""Next row enter points: {0}""".format(next_enter_points))
-        return next_enter_points
+    # @staticmethod
+    # def __get_min_old(enter_points, value="row"):
+    #     """
+    #
+    #     Parameters
+    #     ----------
+    #     enter_points : list of numpy.array
+    #         List of coordinates
+    #     value : {"row", "col"}
+    #         Define which position should be calculated as a minimum.
+    #     Returns
+    #     -------
+    #     numpy.array
+    #         The most extreme enter point value
+    #     """
+    #     if value not in ("row", "col"):
+    #         raise ValueError
+    #
+    #     coord_ind = {"row": 0, "col": 1}
+    #
+    #     min_value = None
+    #     for el in enter_points:
+    #         if min_value is None:
+    #             min_value = el
+    #         else:
+    #             # select which index in array(<row_coord>, <coll_coord>) should take
+    #             coord = coord_ind[value]
+    #             if el[coord] < min_value[coord]:
+    #                 min_value = el
+    #
+    #     logging.debug("MIN value in {0}: {1}".format(value.upper(), min_value))
+    #
+    #     return min_value
+    #
+    # @staticmethod
+    # def __get_min(enter_points, value="row"):
+    #     """
+    #
+    #     Parameters
+    #     ----------
+    #     enter_points : list of numpy.array
+    #         List of coordinates
+    #     value : {"row", "col"}
+    #         Define which position should be calculated as a minimum.
+    #     Returns
+    #     -------
+    #     numpy.array
+    #         The most extreme enter point value
+    #     """
+    #     if value not in ("row", "col"):
+    #         raise ValueError
+    #
+    #     coord_ind = {"row": 0, "col": 1}
+    #
+    #     min_value = None
+    #     for el in enter_points:
+    #         if min_value is None:
+    #             min_value = el
+    #         else:
+    #             # select which index in array(<row_coord>, <coll_coord>) should take
+    #             coord = coord_ind[value]
+    #             print(min_value)
+    #             if el[0][coord] < min_value[0][coord]:
+    #                 min_value = el
+    #
+    #     logging.debug("MIN value in {0}: {1}".format(value.upper(), min_value))
+    #
+    #     return min_value
+    #
+    # def get_next_leak_points(self):
+    #     all_enter_points = self.get_all_enter_points()
+    #     # FIXME
+    #     min_row_val = self.__get_min(all_enter_points)
+    #     # print(min_row_val)
+    #     next_enter_points = list()
+    #     for ind, el in enumerate(all_enter_points):
+    #         print("sss")
+    #         cur = all_enter_points[ind]
+    #         diff = min_row_val[0] - cur[0]
+    #         # FIXME don't use pixel based metrics
+    #         if 0 <= abs(diff) < 5:
+    #             next_enter_points.append(cur)
+    #
+    #     logging.debug("""Next row enter points: {0}""".format(next_enter_points))
+    #     return next_enter_points
 
     def is_my_point(self, row, col):
         """Check whether point belong row set or not.
@@ -304,14 +432,14 @@ class RowCellSet(object):
         is_my = False
         for cell in self.body:
             if (cell.point_counter.get((row, col)) is not None or
-                    cell.point_counter.get((row+1, col+1)) is not None or
-                    cell.point_counter.get((row-1, col-1)) is not None or
-                    cell.point_counter.get((row-1, col+1)) is not None or
-                    cell.point_counter.get((row+1, col)) is not None or
-                    cell.point_counter.get((row-1, col)) is not None or
-                    cell.point_counter.get((row, col+1)) is not None or
-                    cell.point_counter.get((row, col-1)) is not None or
-                    cell.point_counter.get((row+1, col-1)) is not None):
+                        cell.point_counter.get((row + 1, col + 1)) is not None or
+                        cell.point_counter.get((row - 1, col - 1)) is not None or
+                        cell.point_counter.get((row - 1, col + 1)) is not None or
+                        cell.point_counter.get((row + 1, col)) is not None or
+                        cell.point_counter.get((row - 1, col)) is not None or
+                        cell.point_counter.get((row, col + 1)) is not None or
+                        cell.point_counter.get((row, col - 1)) is not None or
+                        cell.point_counter.get((row + 1, col - 1)) is not None):
                 is_my = True
                 break
 
@@ -338,6 +466,7 @@ class Contour(object):
     table: pandas.DataFrame
         Holder for converted body into table base data frame
     """
+
     def __init__(self):
         self.reverse = False
         self.closed = False
@@ -521,9 +650,9 @@ class Contour(object):
             tl = np.array([int(res.row), int(res.col)])
             return tl
 
-        # side_left = self.table[self.table["side"] == "left"]
-        # l_thr = self.remove_outliers(side_left["col"])
-        # side_left = side_left[(side_left["col"] >= l_thr[0]) & (side_left["col"] <= l_thr[1])]
+            # side_left = self.table[self.table["side"] == "left"]
+            # l_thr = self.remove_outliers(side_left["col"])
+            # side_left = side_left[(side_left["col"] >= l_thr[0]) & (side_left["col"] <= l_thr[1])]
 
     def set_table(self, dataframe):
         self.table = dataframe.copy()
@@ -658,6 +787,7 @@ class Keeper(object):
     body: list
         List of numpy arrays.
     """
+
     def __init__(self):
         self.body = list()
 
@@ -695,10 +825,10 @@ class Gleam(object):
         Value of cell in position 5 (centroid).
 
     """
+
     def __init__(self, x=0, y=0):
         self.direction = None
         self.value = None
-
 
         # mean that stops near obstacle
         self.reflected = None
@@ -897,5 +1027,3 @@ if __name__ == "__main__":
     t.show()
     t.validate_enter_points()
     t.show()
-
-

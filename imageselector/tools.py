@@ -165,7 +165,18 @@ class Table(object):
         table_border_conner = self.__get_table_border_conner()
         first_start_point = self.__leak_and_get_start_point_from(table_border_conner[0], table_border_conner[1], 5)
         # stat, end coordinates of the row
-        first_start_point = [first_start_point]
+
+        # TODO try to make it with tuple of options
+        # TODO first as a enter point and second as object of neighbour Contour object
+        # TODO need object not just BBOX because of contour shape variety
+        # TODO [(<enter point>, <Contour object>),...]
+        # TODO if it is a first point object should be None
+        # first_start_point = [{"enter_point": first_start_point, "next_cell_contour": None}]
+        first_start_point = [{
+            "enter_point_row": first_start_point[0],
+            "enter_point_col": first_start_point[1],
+            "next_cell_contour": None}]
+        # first_start_point = [first_start_point]
 
         logging.debug("""TABLE START POINT: {0}""".format(first_start_point))
 
@@ -179,61 +190,42 @@ class Table(object):
             start_points = self.__get_first_start_point()
             logging.debug("Start line from: {0}".format(start_points))
 
+        # TODO make for Contour object another list NOT body for keeping together contour enter point
+        # TODO and Contour object it self
+
         # TODO add somehow offset with neighbor bigger cell
 
         row_cell_set = RowCellSet()
-        for sp in start_points:
-            cell_start_point = sp
-            while True:
-                logging.debug("Follow from: {0}".format(sp))
+        for enter_point_options in start_points:
+            # print("ENTER", enter_point_options)
+            cell_start_point = {
+                "enter_point_row": enter_point_options.get("enter_point_row"),
+                "enter_point_col": enter_point_options.get("enter_point_col"),
+            }
 
-                contour = self.__get_cell_contour_from(cell_start_point[0], cell_start_point[1])
+            next_cell_contour = enter_point_options["next_cell_contour"]
+
+            while True:
+                logging.debug("Follow from: {0}".format(cell_start_point))
+
+                contour = self.__get_cell_contour_from(cell_start_point["enter_point_row"],
+                                                       cell_start_point["enter_point_col"])
                 row_cell_set.add_contour(contour)
                 leak_start_point = contour.get_conner("rt")
                 try:
                     next_draw_start_point = self.__leak_and_get_start_point_from(
                         leak_start_point[0], leak_start_point[1], direction=5
                     )
-                    cell_start_point = next_draw_start_point
+
+                    cell_start_point = {
+                        "enter_point_row": next_draw_start_point[0],
+                        "enter_point_col": next_draw_start_point[1],
+                    }
                 except (IndexLessThanHeight, IndexLessThanWidth, IndexMoreThanWidth, IndexMoreThanHeight,
                         OutOfContourBorder, EmptySection):
                     break
 
         return row_cell_set
-
-    def get_table_row_set_old2(self):
-        start_points = None
-        if start_points is None:
-            start_points = self.__get_first_start_point()
-
-        table_row_set = list()
-
-        for el in range(1):
-            row_cell_set = self.get_row_cell_set(start_points)
-            next_leak_points = row_cell_set.get_next_leak_points()
-
-            # START test
-            ep_pool = EnterPointPool()
-            if ep_pool.pool is None:
-                ep_pool.set_base_pool(row_cell_set.get_all_enter_points())
-
-            # ep_pool.remove_prev_enter_points(next_leak_points)
-            ep_pool.extract_leak_points()
-            # END test
-
-            table_row_set.append(row_cell_set)
-            _start_points = list()
-            for leak_point in next_leak_points:
-                try:
-                    next_draw_start_point = self.__leak_and_get_start_point_from(
-                        leak_point[0], leak_point[1], direction=5
-                    )
-                    _start_points.append(next_draw_start_point)
-                except (IndexLessThanHeight, IndexLessThanWidth, IndexMoreThanWidth, IndexMoreThanHeight):
-                    break
-            start_points = _start_points
-        #
-        return table_row_set
 
     def get_table_row_set(self):
         start_points = None
@@ -254,6 +246,7 @@ class Table(object):
                 ep_pool.extend_pool(row_cell_set.get_all_enter_points())
 
             next_leak_points = ep_pool.extract_leak_points()
+            # print("LEAKED", next_leak_points)
             # END test
 
             table_row_set.append(row_cell_set)
@@ -263,7 +256,11 @@ class Table(object):
                     next_draw_start_point = self.__leak_and_get_start_point_from(
                         leak_point[0], leak_point[1], direction=5
                     )
-                    _start_points.append(next_draw_start_point)
+                    res = {
+                        "enter_point_row": next_draw_start_point[0],
+                        "enter_point_col": next_draw_start_point[1],
+                        "next_cell_contour": leak_point[2]}
+                    _start_points.append(res)
                 except (IndexLessThanHeight, IndexLessThanWidth, IndexMoreThanWidth, IndexMoreThanHeight):
                     break
             start_points = _start_points
